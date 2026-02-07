@@ -1,85 +1,164 @@
 <div align="center">
-  <h1><img src="https://gocartshop.in/favicon.ico" width="20" height="20" alt="GoCart Favicon">
-   GoCart</h1>
-  <p>
-    An open-source multi-vendor e-commerce platform built with Next.js and Tailwind CSS.
-  </p>
-  <p>
-    <a href="https://github.com/GreatStackDev/goCart/blob/main/LICENSE.md"><img src="https://img.shields.io/github/license/GreatStackDev/goCart?style=for-the-badge" alt="License"></a>
-    <a href="https://github.com/GreatStackDev/goCart/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=for-the-badge" alt="PRs Welcome"></a>
-    <a href="https://github.com/GreatStackDev/goCart/issues"><img src="https://img.shields.io/github/issues/GreatStackDev/goCart?style=for-the-badge" alt="GitHub issues"></a>
-  </p>
+
+# 🛒 GoCart
+
+**Your marketplace, simplified.**
+
+A full-stack, multi-vendor e-commerce platform where sellers create shops, customers discover products, and admins keep everything running smoothly — all in one place.
+
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=for-the-badge)](https://github.com/vivin888/gocart-platform/pulls)
+[![GitHub issues](https://img.shields.io/github/issues/vivin888/gocart-platform?style=for-the-badge)](https://github.com/vivin888/gocart-platform/issues)
+
 </div>
 
----
+<br>
 
-## 📖 Table of Contents
+## What is GoCart?
 
-- [✨ Features](#-features)
-- [🛠️ Tech Stack](#-tech-stack)
-- [🚀 Getting Started](#-getting-started)
-- [🤝 Contributing](#-contributing)
-- [📜 License](#-license)
+GoCart is an open-source multi-vendor marketplace that gives you everything out of the box:
 
----
+- **Sellers** sign up, create a store, list products, and track orders from a dedicated dashboard.
+- **Customers** browse shops, add items to cart, pay with Stripe, and leave ratings.
+- **Admins** approve stores, manage coupons, monitor sales analytics, and control the entire platform.
 
-## Features
+All powered by a modern React 19 + Next.js 16 stack with server-side rendering, Turbopack dev server, and edge-ready deployment.
 
-- **Multi-Vendor Architecture:** Allows multiple vendors to register, manage their own products, and sell on a single platform.
-- **Customer-Facing Storefront:** A beautiful and responsive user interface for customers to browse and purchase products.
-- **Vendor Dashboards:** Dedicated dashboards for vendors to manage products, view sales analytics, and track orders.
-- **Admin Panel:** A comprehensive dashboard for platform administrators to oversee vendors, products, and commissions.
+<br>
 
-## 🛠️ Tech Stack <a name="-tech-stack"></a>
+## Tech Stack
 
-- **Framework:** Next.js
-- **Styling:** Tailwind CSS
-- **UI Components:** Lucide React for icons
-- **State Management:** Redux Toolkit
+### Core
 
-## 🚀 Getting Started <a name="-getting-started"></a>
+```
+Next.js 16          →  App Router, Server Actions, Turbopack
+React 19            →  Latest concurrent features
+Tailwind CSS 4      →  Utility-first styling with PostCSS
+TypeScript          →  Middleware & config type safety
+```
 
-First, install the dependencies. We recommend using `npm` for this project.
+### Database & ORM
+
+```
+PostgreSQL          →  Primary relational database
+Neon                →  Serverless Postgres (WebSocket driver)
+Prisma 6            →  Type-safe ORM with Neon adapter
+```
+
+### Authentication
+
+```
+Clerk               →  User management, sign-in/sign-up, session handling
+```
+
+### Payments
+
+```
+Stripe              →  Checkout, payment processing, webhooks
+```
+
+### AI & Generative
+
+```
+Google Gemini AI    →  AI-powered store creation assistant
+```
+
+### Media & Storage
+
+```
+ImageKit            →  Image upload, optimization, and CDN delivery
+```
+
+### State & Data
+
+```
+Redux Toolkit       →  Global client state management
+React Redux         →  React bindings for Redux
+Axios               →  HTTP client for API calls
+```
+
+### Background Jobs
+
+```
+Inngest             →  Serverless event-driven background functions
+```
+
+### UI & Visualization
+
+```
+Lucide React        →  Beautiful open-source icon set
+Recharts            →  Composable charting library for dashboards
+React Hot Toast     →  Lightweight toast notifications
+date-fns            →  Modern date utility library
+```
+
+<br>
+
+## Project Structure
+
+```
+app/
+├── (public)/           Customer-facing pages (home, shop, cart, orders, product)
+├── store/              Seller dashboard (add/manage products, orders)
+├── admin/              Admin panel (approve stores, coupons, analytics)
+└── api/                REST API routes
+    ├── cart/           Cart operations
+    ├── products/       Product CRUD
+    ├── orders/         Order management
+    ├── store/          Store creation, AI assist, dashboard data
+    ├── stripe/         Payment webhooks
+    ├── admin/          Admin endpoints
+    └── ...
+
+components/             Reusable UI components
+configs/                ImageKit & AI configuration
+inngest/                Background job definitions
+lib/                    Prisma client, Redux store, constants
+middlewares/            Auth guards (admin, seller)
+prisma/                 Database schema
+```
+
+<br>
+
+## Getting Started
+
+**Prerequisites** — Node.js 18+ and npm
 
 ```bash
+# 1 · Clone the repo
+git clone https://github.com/vivin888/gocart-platform.git
+cd gocart-platform
+
+# 2 · Install dependencies
 npm install
-```
 
-Then, run the development server:
+# 3 · Set up environment variables
+cp .env.example .env
+#    Fill in your keys: DATABASE_URL, CLERK, STRIPE, IMAGEKIT, GEMINI, INNGEST
 
-```bash
+# 4 · Push the database schema
+npx prisma db push
+
+# 5 · Start the dev server (Turbopack ⚡)
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open **http://localhost:3000** and you're live.
 
-You can start editing the page by modifying `app/(public)/page.js`. The page auto-updates as you edit the file.
+<br>
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Outfit](https://vercel.com/font), a new font family for Vercel.
+## Scripts
+
+| Command | Description |
+|---|---|
+| `npm run dev` | Start dev server with Turbopack |
+| `npm run build` | Generate Prisma client & build for production |
+| `npm start` | Run the production server |
+| `npm run lint` | Lint the codebase |
+
+<br>
 
 ---
 
-## 🤝 Contributing <a name="-contributing"></a>
-
-We welcome contributions! Please see our [CONTRIBUTING.md](./CONTRIBUTING.md) for more details on how to get started.
-
----
-
-## 📜 License <a name="-license"></a>
-
-This project is licensed under the MIT License. See the [LICENSE.md](./LICENSE.md) file for details.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+<div align="center">
+<sub>Built with ❤️ by <a href="https://github.com/vivin888">vivin888</a> · Powered by Next.js, Tailwind CSS, Prisma & Stripe</sub>
+</div>
