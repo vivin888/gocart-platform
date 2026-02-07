@@ -6,9 +6,6 @@
 
 A full-stack, multi-vendor e-commerce platform where sellers create shops, customers discover products, and admins keep everything running smoothly — all in one place.
 
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=for-the-badge)](https://github.com/vivin888/gocart-platform/pulls)
-[![GitHub issues](https://img.shields.io/github/issues/vivin888/gocart-platform?style=for-the-badge)](https://github.com/vivin888/gocart-platform/issues)
-
 </div>
 
 <br>
