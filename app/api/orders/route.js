@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import Stripe from "stripe";
 
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
 const PAYMENT_METHOD = {
   COD: "COD",
   STRIPE: "STRIPE",
@@ -10,64 +12,27 @@ const PAYMENT_METHOD = {
 
 export async function POST(request) {
   try {
-    const { userId, has } = getAuth(request);
+    const { userId } = getAuth(request);
+
     if (!userId) {
-      return NextResponse.json({ error: "not authorized" }, { status: 401 });
+      return NextResponse.json({ error: "Not authorized" }, { status: 401 });
     }
 
-    const {
-      addressId,
-      items,
-      couponCode,
-      paymentMethod: selectedPaymentMethod,
-    } = await request.json();
+    const { addressId, items, paymentMethod, coupon } = await request.json();
 
     if (
       !addressId ||
-      !selectedPaymentMethod ||
+      !paymentMethod ||
       !Array.isArray(items) ||
       items.length === 0
     ) {
       return NextResponse.json(
-        { error: "missing order details" },
+        { error: "Missing order details" },
         { status: 400 }
       );
     }
 
-    let coupon = null;
-
-    if (couponCode) {
-      coupon = await prisma.coupon.findUnique({
-        where: { code: couponCode },
-      });
-
-      if (!coupon) {
-        return NextResponse.json(
-          { error: "Coupon not found" },
-          { status: 400 }
-        );
-      }
-    }
-
-    if (coupon?.forNewUser) {
-      const userOrders = await prisma.order.count({ where: { userId } });
-      if (userOrders > 0) {
-        return NextResponse.json(
-          { error: "Coupon valid for new users only" },
-          { status: 400 }
-        );
-      }
-    }
-
-    const isPlusMember = has({ plan: "plus" });
-
-    if (coupon?.forMember && !isPlusMember) {
-      return NextResponse.json(
-        { error: "Coupon valid for members only" },
-        { status: 400 }
-      );
-    }
-
+    /* ---------------- GROUP ITEMS BY STORE ---------------- */
     const ordersByStore = new Map();
 
     for (const item of items) {
@@ -82,104 +47,109 @@ export async function POST(request) {
       }
 
       ordersByStore.get(product.storeId).push({
-        ...item,
+        productId: product.id,
+        quantity: item.quantity,
         price: product.price,
       });
     }
 
-    let isShippingFeeAdded = false;
-    const orderIds = [];
-    let fullAmount = 0;
+    let shippingAdded = false;
+    let stripeTotal = 0;
 
-    for (const [storeId, sellerItems] of ordersByStore.entries()) {
-      let total = sellerItems.reduce(
-        (acc, item) => acc + item.price * item.quantity,
+    /* ---------------- CREATE ORDERS ---------------- */
+    for (const [storeId, storeItems] of ordersByStore.entries()) {
+      let total = storeItems.reduce(
+        (sum, item) => sum + item.price * item.quantity,
         0
       );
 
-      if (coupon) {
+      // Apply coupon (already validated)
+      if (coupon?.discount) {
         total -= (total * coupon.discount) / 100;
       }
 
-      if (!isPlusMember && !isShippingFeeAdded) {
+      // Shipping fee once
+      if (!shippingAdded) {
         total += 5;
-        isShippingFeeAdded = true;
+        shippingAdded = true;
       }
 
-      total = parseFloat(total.toFixed(2));
-      fullAmount += total;
+      total = Number(total.toFixed(2));
+      stripeTotal += total;
 
-      const order = await prisma.order.create({
-        data: {
-          userId,
-          storeId,
-          addressId,
-          total,
-          paymentMethod: selectedPaymentMethod,
-          isCouponUsed: !!coupon,
-          orderItems: {
-            create: sellerItems.map((item) => ({
-              productId: item.id,
-              quantity: item.quantity,
-              price: item.price,
-            })),
+      // COD → create order immediately
+      if (paymentMethod === PAYMENT_METHOD.COD) {
+        await prisma.order.create({
+          data: {
+            userId,
+            storeId,
+            addressId,
+            total,
+            paymentMethod,
+            isPaid: false,
+            isCouponUsed: !!coupon,
+            coupon: coupon || {},
+            orderItems: {
+              create: storeItems,
+            },
           },
-        },
-      });
-
-      orderIds.push(order.id);
+        });
+      }
     }
 
-    if (selectedPaymentMethod === PAYMENT_METHOD.STRIPE) {
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-      const origin = request.headers.get("origin");
-
+    /* ---------------- STRIPE PAYMENT ---------------- */
+    if (paymentMethod === PAYMENT_METHOD.STRIPE) {
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
+        mode: "payment",
         line_items: [
           {
             price_data: {
               currency: "usd",
-              product_data: { name: "Order" },
-              unit_amount: Math.round(fullAmount * 100),
+              product_data: {
+                name: "GoCart Order",
+              },
+              unit_amount: Math.round(stripeTotal * 100),
             },
             quantity: 1,
           },
         ],
-        expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
-        mode: "payment",
-        success_url: `${origin}/loading?nextUrl=orders`,
-        cancel_url: `${origin}/cart`,
-        metadata: {
-          orderIds: orderIds.join(","),
-          userId,
-          appId: "gocart",
-        },
+        success_url: `${process.env.NEXT_PUBLIC_APP_URL}/orders?success=true`,
+        cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/cart`,
+        metadata: { userId },
       });
 
-      return NextResponse.json({ session });
+      // ✅ FRONTEND EXPECTS `url`
+      return NextResponse.json({ url: session.url });
     }
 
+    /* ---------------- CLEAR CART (COD ONLY) ---------------- */
     await prisma.user.update({
       where: { id: userId },
       data: { cart: {} },
     });
 
-    return NextResponse.json({ message: "Orders placed successfully" });
-  } catch (error) {
-    console.error(error);
     return NextResponse.json(
-      { error: error.message || "Something went wrong" },
-      { status: 400 }
+      { message: "Order placed successfully" },
+      { status: 201 }
+    );
+
+  } catch (error) {
+    console.error("Order creation error:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to place order" },
+      { status: 500 }
     );
   }
 }
 
+/* ================= FETCH ORDERS ================= */
 export async function GET(request) {
   try {
     const { userId } = getAuth(request);
+
     if (!userId) {
-      return NextResponse.json({ error: "not authorized" }, { status: 401 });
+      return NextResponse.json({ error: "Not authorized" }, { status: 401 });
     }
 
     const orders = await prisma.order.findMany({
@@ -187,12 +157,7 @@ export async function GET(request) {
         userId,
         OR: [
           { paymentMethod: PAYMENT_METHOD.COD },
-          {
-            AND: [
-              { paymentMethod: PAYMENT_METHOD.STRIPE },
-              { isPaid: true },
-            ],
-          },
+          { paymentMethod: PAYMENT_METHOD.STRIPE, isPaid: true },
         ],
       },
       include: {
@@ -203,11 +168,12 @@ export async function GET(request) {
     });
 
     return NextResponse.json(orders);
+
   } catch (error) {
-    console.error(error);
+    console.error("Fetch orders error:", error);
     return NextResponse.json(
-      { error: error.message || "Something went wrong" },
-      { status: 400 }
+      { error: error.message || "Failed to fetch orders" },
+      { status: 500 }
     );
   }
 }
