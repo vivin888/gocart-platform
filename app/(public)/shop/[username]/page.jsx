@@ -6,7 +6,7 @@ import { MailIcon, MapPinIcon } from "lucide-react"
 import Loading from "@/components/Loading"
 import Image from "next/image"
 import axios from "axios"
-import toast from " react-hot-toast"
+import toast from "react-hot-toast"
 
 export default function StoreShop() {
 
