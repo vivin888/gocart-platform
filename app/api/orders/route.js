@@ -1,6 +1,7 @@
 import { getAuth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import Stripe from "stripe";
 
 const PAYMENT_METHOD = {
   COD: "COD",
@@ -24,13 +25,12 @@ export async function POST(request) {
     if (
       !addressId ||
       !selectedPaymentMethod ||
-      !items ||
       !Array.isArray(items) ||
       items.length === 0
     ) {
       return NextResponse.json(
-        { error: "missing order details." },
-        { status: 401 }
+        { error: "missing order details" },
+        { status: 400 }
       );
     }
 
@@ -49,11 +49,11 @@ export async function POST(request) {
       }
     }
 
-    if (couponCode && coupon?.forNewUser) {
-      const userOrders = await prisma.order.findMany({ where: { userId } });
-      if (userOrders.length > 0) {
+    if (coupon?.forNewUser) {
+      const userOrders = await prisma.order.count({ where: { userId } });
+      if (userOrders > 0) {
         return NextResponse.json(
-          { error: "Coupon valid for new users" },
+          { error: "Coupon valid for new users only" },
           { status: 400 }
         );
       }
@@ -61,7 +61,7 @@ export async function POST(request) {
 
     const isPlusMember = has({ plan: "plus" });
 
-    if (couponCode && coupon?.forMember && !isPlusMember) {
+    if (coupon?.forMember && !isPlusMember) {
       return NextResponse.json(
         { error: "Coupon valid for members only" },
         { status: 400 }
@@ -75,18 +75,21 @@ export async function POST(request) {
         where: { id: item.id },
       });
 
-      const storeId = product.storeId;
-      if (!ordersByStore.has(storeId)) {
-        ordersByStore.set(storeId, []);
+      if (!product) continue;
+
+      if (!ordersByStore.has(product.storeId)) {
+        ordersByStore.set(product.storeId, []);
       }
 
-      ordersByStore.get(storeId).push({
+      ordersByStore.get(product.storeId).push({
         ...item,
         price: product.price,
       });
     }
 
     let isShippingFeeAdded = false;
+    const orderIds = [];
+    let fullAmount = 0;
 
     for (const [storeId, sellerItems] of ordersByStore.entries()) {
       let total = sellerItems.reduce(
@@ -103,12 +106,15 @@ export async function POST(request) {
         isShippingFeeAdded = true;
       }
 
-      await prisma.order.create({
+      total = parseFloat(total.toFixed(2));
+      fullAmount += total;
+
+      const order = await prisma.order.create({
         data: {
           userId,
           storeId,
           addressId,
-          total: parseFloat(total.toFixed(2)),
+          total,
           paymentMethod: selectedPaymentMethod,
           isCouponUsed: !!coupon,
           orderItems: {
@@ -120,6 +126,38 @@ export async function POST(request) {
           },
         },
       });
+
+      orderIds.push(order.id);
+    }
+
+    if (selectedPaymentMethod === PAYMENT_METHOD.STRIPE) {
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+      const origin = request.headers.get("origin");
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: { name: "Order" },
+              unit_amount: Math.round(fullAmount * 100),
+            },
+            quantity: 1,
+          },
+        ],
+        expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
+        mode: "payment",
+        success_url: `${origin}/loading?nextUrl=orders`,
+        cancel_url: `${origin}/cart`,
+        metadata: {
+          orderIds: orderIds.join(","),
+          userId,
+          appId: "gocart",
+        },
+      });
+
+      return NextResponse.json({ session });
     }
 
     await prisma.user.update({
@@ -127,11 +165,11 @@ export async function POST(request) {
       data: { cart: {} },
     });
 
-    return NextResponse.json({ message: "Orders Placed Successfully" });
+    return NextResponse.json({ message: "Orders placed successfully" });
   } catch (error) {
     console.error(error);
     return NextResponse.json(
-      { error: error.code || error.message },
+      { error: error.message || "Something went wrong" },
       { status: 400 }
     );
   }
@@ -168,7 +206,7 @@ export async function GET(request) {
   } catch (error) {
     console.error(error);
     return NextResponse.json(
-      { error: error.code || error.message },
+      { error: error.message || "Something went wrong" },
       { status: 400 }
     );
   }
